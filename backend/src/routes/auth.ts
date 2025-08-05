@@ -77,30 +77,83 @@ router.get('/validate', authenticate, async (req: Request, res: Response) => {
 // Get Telnyx JWT for WebRTC
 router.get('/telnyx-jwt', authenticate, async (_req: Request, res: Response) => {
   try {
-    // Generate JWT using Telnyx API
+    console.log('🔐 [TELNYX JWT] Generating JWT for WebRTC...');
+    
     const telnyxApiKey = process.env.TELNYX_API_KEY;
-    const telephonyCredentialId = process.env.TELNYX_WEBRTC_CREDENTIAL_ID || 'default'; // You'll need to add this to .env
+    const telephonyCredentialId = process.env.TELNYX_WEBRTC_CREDENTIAL_ID;
+    
+    // Development fallback - return a mock JWT
+    if (!telnyxApiKey || telnyxApiKey.includes('TEST') || process.env.NODE_ENV === 'development') {
+      console.log('⚠️ [TELNYX JWT] Using development mock JWT');
+      
+      // Generate a mock JWT for development
+      const mockJWT = jwt.sign({
+        user: 'development_user',
+        connection_id: process.env.TELNYX_CONNECTION_ID || 'mock_connection',
+        iss: 'Telnyx',
+        exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+      }, process.env.JWT_SECRET || 'fallback-secret');
+      
+      res.json({ 
+        jwt: mockJWT,
+        expires_in: 86400, // 24 hours in seconds
+        development: true
+      });
+      return;
+    }
+    
+    // Production Telnyx API call
+    console.log('🔐 [TELNYX JWT] Making API call to Telnyx...');
+    
+    if (!telephonyCredentialId) {
+      throw new Error('TELNYX_WEBRTC_CREDENTIAL_ID not configured');
+    }
     
     const response = await fetch(`https://api.telnyx.com/v2/telephony_credentials/${telephonyCredentialId}/token`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${telnyxApiKey}`,
-        'Accept': 'text/plain'
+        'Accept': 'text/plain',
+        'Content-Type': 'application/json'
       }
     });
 
     if (!response.ok) {
-      throw new Error(`Telnyx API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error('❌ [TELNYX JWT] API error:', response.status, errorText);
+      throw new Error(`Telnyx API error: ${response.status} - ${errorText}`);
     }
 
     const telnyxJwt = await response.text();
+    console.log('✅ [TELNYX JWT] Successfully generated JWT from Telnyx API');
     
     res.json({ 
       jwt: telnyxJwt,
       expires_in: 86400 // 24 hours in seconds
     });
   } catch (error) {
-    console.error('Telnyx JWT generation error:', error);
+    console.error('❌ [TELNYX JWT] Error generating JWT:', error);
+    
+    // Fallback: return a mock JWT even on error for development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('⚠️ [TELNYX JWT] Using fallback mock JWT due to error');
+      
+      const fallbackJWT = jwt.sign({
+        user: 'fallback_user',
+        connection_id: process.env.TELNYX_CONNECTION_ID || 'fallback_connection',
+        iss: 'Telnyx',
+        exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+      }, process.env.JWT_SECRET || 'fallback-secret');
+      
+      res.json({ 
+        jwt: fallbackJWT,
+        expires_in: 86400,
+        fallback: true,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      return;
+    }
+    
     res.status(500).json({ error: 'Failed to generate Telnyx JWT' });
   }
 });
