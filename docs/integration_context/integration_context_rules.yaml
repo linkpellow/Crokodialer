@@ -1,0 +1,39 @@
+# Reference: This file defines integration rules, naming conventions, and AI agent behavior.
+# Consult when refactoring, automating, or validating coding/integration standards.
+# For architecture, see Project_Overview.md. For implementation steps, see INTEGRATION_PLAN.md.
+# For file locations, see Crokodial_(CRM)_Tree_Map.md and Crokodialer_(Dialer)_Tree_Map.md.
+
+integration_goals:
+  - Unify telephony and CRM data flow
+  - Enable seamless click-to-call from CRM to FusionPBX
+  - Allow webhook-triggered lead sync between systems
+  - Show call logs and statuses inside Crokodial interface
+
+important_files:
+  - server/controllers/callController.js
+  - server/fusion/dialer.js
+  - models/Lead.js
+  - routes/webhooks.js
+  - crm/ui/LeadCard.js
+
+avoid_touching:
+  - legacy/*
+  - __tests__/*
+  - tmp/
+  - node_modules/
+
+integration_keywords:
+  - "click-to-call"
+  - "lead sync"
+  - "SIP call"
+  - "webhook"
+  - "FusionPBX"
+
+file_conventions:
+  - Prefer snake_case for utility scripts
+  - Use PascalCase for class-based models
+  - Tag key functions with `@integration` comment
+
+prompt_cues:
+  - Prioritize end-to-end flow from UI to telephony backend
+  - Make all lead changes propagate to database and FusionPBX

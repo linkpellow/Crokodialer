@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AudioContext Crash Reproduction</title>
+</head>
+<body>
+    <h1>AudioContext Crash Test</h1>
+    <button onclick="testAudioContext()">Test AudioContext</button>
+    <div id="output"></div>
+    
+    <script>
+        console.log('🔍 [CRASH TEST] Page loaded');
+        
+        // This will likely crash the app
+        function testAudioContext() {
+            try {
+                console.log('🔍 [CRASH TEST] Creating AudioContext...');
+                
+                // This line causes the SIGTERM crash
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                console.log('✅ [CRASH TEST] AudioContext created successfully');
+                document.getElementById('output').innerHTML = 'AudioContext created successfully';
+                
+            } catch (error) {
+                console.error('❌ [CRASH TEST] AudioContext failed:', error);
+                document.getElementById('output').innerHTML = 'AudioContext failed: ' + error.message;
+            }
+        }
+        
+        // Auto-trigger the crash after page load
+        setTimeout(() => {
+            console.log('🔍 [CRASH TEST] Auto-triggering AudioContext test...');
+            testAudioContext();
+        }, 1000);
+        
+        console.log('✅ [CRASH TEST] Script loaded');
+    </script>
+</body>
+</html> 

@@ -1,0 +1,29 @@
+{
+  "name": "crokodial-dialer",
+  "version": "1.0.0",
+  "description": "A multi-platform dialer application",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "backend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "npm run -w backend dev",
+    "dev:backend": "npm run -w backend dev",
+    "dev:desktop": "npm run -w crokodial-desktop dev",
+    "start:backend": "npm --workspace backend start",
+    "build:backend": "npm --workspace backend run build",
+    "build:desktop": "npm run -w crokodial-desktop build",
+    "test": "echo 'Run tests across workspaces'",
+    "lint": "echo 'Run linting across workspaces'"
+  },
+  "devDependencies": {
+    "electron": "^37.2.5",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

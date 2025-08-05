@@ -1,0 +1,491 @@
+CROKODIAL DIALER - MONGODB-CENTRIC ARCHITECTURE IMPLEMENTATION PLAN
+==================================================================
+
+PROJECT OVERVIEW
+===============
+Building a web-based dialer that integrates with your main website's MongoDB database,
+using FusionPBX as a stateless SIP gateway and Telnyx for PSTN connectivity.
+
+ARCHITECTURE DECISION
+====================
+MongoDB as Single Source of Truth + FusionPBX as Stateless SIP Gateway
+
+RATIONALE
+=========
+- Your main website already uses MongoDB
+- FusionPBX database conflicts avoided
+- Professional microservices pattern
+- Maintains data consistency across platforms
+- Leverages existing MongoDB expertise
+
+CURRENT STATUS
+=============
+✅ Project structure created
+✅ Environment variables configured
+✅ Express + TypeScript backend
+✅ MongoDB user authentication
+✅ JWT authentication system
+✅ Socket.io server initialized
+✅ Basic FusionPBX service created
+
+BLOCKING ISSUES
+==============
+❌ FusionPBX-MongoDB compatibility conflict
+❌ Need to refactor FusionPBX service to be stateless
+❌ Missing Call model for unified call tracking
+❌ Need main website user integration
+
+IMPLEMENTATION ROADMAP (4 WEEKS)
+================================
+
+WEEK 1: DATABASE INTEGRATION
+============================
+
+DAY 1-2: EXTEND USER MODEL
+--------------------------
+1. Update backend/src/models/User.ts
+   - Add mainSiteUserId field for main website integration
+   - Add dialerSettings object with:
+     * defaultFromNumber
+     * callRecording (boolean)
+     * sipCredentials (username, password, domain)
+   - Add indexes for performance
+
+2. Create backend/src/models/Call.ts
+   - mainSiteUserId (reference to main website user)
+   - fromNumber, toNumber
+   - status (initiated, ringing, active, completed, failed)
+   - fusionPBXCallId, telnyxCallId
+   - duration, recordingUrl, cost
+   - startTime, endTime, createdAt
+   - Add indexes on mainSiteUserId and status
+
+3. Create backend/src/models/Contact.ts
+   - mainSiteUserId (reference)
+   - name, phoneNumber
+   - email, company (optional)
+   - createdAt, updatedAt
+   - Add indexes on mainSiteUserId and phoneNumber
+
+DAY 3-4: DATABASE CONFIGURATION
+-------------------------------
+1. Update backend/src/config/database.ts
+   - Ensure shared MongoDB connection
+   - Add connection pooling settings
+   - Add error handling and reconnection logic
+   - Add database health check endpoint
+
+2. Create database migration scripts
+   - Add mainSiteUserId to existing users
+   - Create indexes for performance
+   - Add sample data for testing
+
+DAY 5: API ENDPOINTS
+--------------------
+1. Update backend/src/routes/auth.ts
+   - Add endpoint to link main website user
+   - Add endpoint to get user dialer settings
+   - Add endpoint to update dialer settings
+
+2. Create backend/src/routes/calls.ts
+   - GET /api/calls (list user's calls)
+   - POST /api/calls (initiate call)
+   - GET /api/calls/:id (get call details)
+   - PUT /api/calls/:id (update call status)
+
+3. Create backend/src/routes/contacts.ts
+   - GET /api/contacts (list user's contacts)
+   - POST /api/contacts (create contact)
+   - PUT /api/contacts/:id (update contact)
+   - DELETE /api/contacts/:id (delete contact)
+
+SUCCESS CRITERIA WEEK 1:
+- User model extended with main website integration
+- Call and Contact models created with proper indexes
+- All CRUD endpoints working
+- Database connection stable with error handling
+- Tests passing for all new endpoints
+
+WEEK 2: FUSIONPBX GATEWAY REFACTOR
+==================================
+
+DAY 1-2: STATELESS FUSIONPBX SERVICE
+------------------------------------
+1. Refactor backend/src/services/fusionpbx.ts
+   - Remove any database operations
+   - Make it purely a SIP routing gateway
+   - Add connection management with reconnection logic
+   - Add event handling for call events
+
+2. Create backend/src/services/sipManager.ts
+   - Handle SIP user registration
+   - Manage SIP credentials from MongoDB
+   - Route calls through FusionPBX to Telnyx
+   - Handle call state changes
+
+DAY 3-4: CALL ROUTING INTEGRATION
+---------------------------------
+1. Update backend/src/services/telnyx.ts
+   - Integrate with FusionPBX for call routing
+   - Handle outbound call initiation
+   - Process call events and webhooks
+   - Update call status in MongoDB
+
+2. Create backend/src/services/callManager.ts
+   - Orchestrate call flow: User → FusionPBX → Telnyx
+   - Handle call state transitions
+   - Update call records in MongoDB
+   - Emit real-time events via Socket.io
+
+DAY 5: EVENT HANDLING
+---------------------
+1. Update backend/src/index.ts
+   - Integrate callManager with Socket.io
+   - Handle real-time call events
+   - Emit call status updates to connected clients
+   - Handle call recording events
+
+2. Create backend/src/middleware/callAuth.ts
+   - Verify user can make calls
+   - Check call permissions
+   - Validate phone numbers
+   - Rate limiting for call initiation
+
+SUCCESS CRITERIA WEEK 2:
+- FusionPBX service is completely stateless
+- Calls route successfully through FusionPBX → Telnyx
+- Call events update MongoDB in real-time
+- Socket.io events fire for call status changes
+- Error handling works for network failures
+
+WEEK 3: API INTEGRATION & REAL-TIME FEATURES
+============================================
+
+DAY 1-2: UNIFIED AUTHENTICATION
+-------------------------------
+1. Update backend/src/middleware/auth.ts
+   - Support main website user authentication
+   - Handle cross-platform user sessions
+   - Add role-based permissions
+   - Implement session management
+
+2. Create backend/src/services/userSync.ts
+   - Sync user data between main website and dialer
+   - Handle user creation/updates
+   - Manage user preferences
+   - Handle user deletion
+
+DAY 3-4: REAL-TIME FEATURES
+---------------------------
+1. Enhance Socket.io implementation
+   - Add call status events
+   - Add user presence events
+   - Add contact updates events
+   - Add call recording events
+
+2. Create backend/src/services/notificationService.ts
+   - Send call notifications
+   - Handle missed call alerts
+   - Send call summary emails
+   - Push notifications (future)
+
+DAY 5: API DOCUMENTATION & TESTING
+----------------------------------
+1. Create API documentation
+   - Swagger/OpenAPI specification
+   - Postman collection
+   - Integration examples
+   - Error code documentation
+
+2. Create comprehensive tests
+   - Unit tests for all services
+   - Integration tests for API endpoints
+   - Socket.io event tests
+   - End-to-end call flow tests
+
+SUCCESS CRITERIA WEEK 3:
+- Unified authentication works across platforms
+- Real-time events fire correctly
+- All API endpoints documented
+- Test coverage >80%
+- Performance benchmarks met
+
+WEEK 4: TESTING, OPTIMIZATION & DEPLOYMENT
+==========================================
+
+DAY 1-2: PERFORMANCE OPTIMIZATION
+---------------------------------
+1. Database optimization
+   - Add missing indexes
+   - Optimize queries
+   - Add connection pooling
+   - Implement caching layer
+
+2. API performance
+   - Add response caching
+   - Optimize database queries
+   - Add request rate limiting
+   - Monitor API response times
+
+DAY 3: SECURITY AUDIT
+---------------------
+1. Security review
+   - Audit authentication flow
+   - Review API security
+   - Check data encryption
+   - Validate input sanitization
+
+2. Environment configuration
+   - Secure environment variables
+   - Production configuration
+   - SSL/TLS setup
+   - Firewall configuration
+
+DAY 4-5: DEPLOYMENT & MONITORING
+--------------------------------
+1. Production deployment
+   - Docker containerization
+   - CI/CD pipeline setup
+   - Environment deployment
+   - Database migration
+
+2. Monitoring setup
+   - Application monitoring
+   - Database monitoring
+   - Call quality metrics
+   - Error tracking
+
+SUCCESS CRITERIA WEEK 4:
+- Application deployed to production
+- Monitoring and alerting active
+- Performance benchmarks achieved
+- Security audit passed
+- Documentation complete
+
+TECHNICAL SPECIFICATIONS
+========================
+
+DATABASE SCHEMAS
+----------------
+
+User Model:
+{
+  _id: ObjectId,
+  email: String (unique),
+  password: String (hashed),
+  mainSiteUserId: ObjectId (reference),
+  dialerSettings: {
+    defaultFromNumber: String,
+    callRecording: Boolean,
+    sipCredentials: {
+      username: String,
+      password: String,
+      domain: String
+    }
+  },
+  createdAt: Date,
+  updatedAt: Date
+}
+
+Call Model:
+{
+  _id: ObjectId,
+  mainSiteUserId: ObjectId (reference),
+  fromNumber: String,
+  toNumber: String,
+  status: String (enum),
+  fusionPBXCallId: String,
+  telnyxCallId: String,
+  duration: Number,
+  recordingUrl: String,
+  cost: Number,
+  startTime: Date,
+  endTime: Date,
+  createdAt: Date
+}
+
+Contact Model:
+{
+  _id: ObjectId,
+  mainSiteUserId: ObjectId (reference),
+  name: String,
+  phoneNumber: String,
+  email: String (optional),
+  company: String (optional),
+  createdAt: Date,
+  updatedAt: Date
+}
+
+API ENDPOINTS
+-------------
+
+Authentication:
+- POST /api/auth/register
+- POST /api/auth/login
+- GET /api/auth/me
+- POST /api/auth/link-main-site
+- PUT /api/auth/dialer-settings
+
+Calls:
+- GET /api/calls
+- POST /api/calls
+- GET /api/calls/:id
+- PUT /api/calls/:id/status
+
+Contacts:
+- GET /api/contacts
+- POST /api/contacts
+- PUT /api/contacts/:id
+- DELETE /api/contacts/:id
+
+SOCKET.IO EVENTS
+----------------
+
+Client to Server:
+- join-room
+- leave-room
+- initiate-call
+- end-call
+- update-call-status
+
+Server to Client:
+- call-status-update
+- incoming-call
+- call-ended
+- user-presence
+- contact-updated
+
+ENVIRONMENT VARIABLES
+--------------------
+
+Required:
+- MONGO_URI=mongodb://localhost:27017/crokodial
+- JWT_SECRET=your_jwt_secret
+- FUSIONPBX_HOST=localhost
+- FUSIONPBX_PORT=8021
+- FUSIONPBX_PASSWORD=ClueCon
+- TELNYX_API_KEY=your_telnyx_key
+- TELNYX_CONNECTION_ID=your_connection_id
+
+Optional:
+- CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+- NODE_ENV=development
+- PORT=4000
+
+DEPLOYMENT REQUIREMENTS
+======================
+
+INFRASTRUCTURE
+--------------
+- MongoDB database (shared with main website)
+- Node.js server (v18+)
+- FusionPBX server
+- Telnyx account
+- TURN server (Coturn)
+- Load balancer (optional)
+- SSL certificate
+
+MONITORING
+----------
+- Application performance monitoring
+- Database performance monitoring
+- Call quality metrics
+- Error tracking and alerting
+- Uptime monitoring
+
+SECURITY
+--------
+- JWT token management
+- API rate limiting
+- Input validation and sanitization
+- Database connection security
+- SSL/TLS encryption
+- Firewall configuration
+
+TESTING STRATEGY
+================
+
+UNIT TESTS
+----------
+- Service layer tests
+- Model validation tests
+- Utility function tests
+- Authentication tests
+
+INTEGRATION TESTS
+-----------------
+- API endpoint tests
+- Database integration tests
+- Socket.io event tests
+- External service integration tests
+
+END-TO-END TESTS
+----------------
+- Complete call flow tests
+- User authentication flow
+- Contact management flow
+- Error handling scenarios
+
+PERFORMANCE TESTS
+-----------------
+- API response time tests
+- Database query performance
+- Concurrent call handling
+- Memory usage monitoring
+
+MAINTENANCE & SUPPORT
+=====================
+
+ONGOING TASKS
+-------------
+- Database backups
+- Log rotation
+- Security updates
+- Performance monitoring
+- User support
+
+FUTURE ENHANCEMENTS
+-------------------
+- Call recording storage
+- Advanced analytics
+- Multi-tenant support
+- Mobile app integration
+- AI-powered features
+
+TROUBLESHOOTING GUIDE
+=====================
+
+COMMON ISSUES
+-------------
+1. FusionPBX connection failures
+   - Check network connectivity
+   - Verify credentials
+   - Check firewall settings
+
+2. Call routing issues
+   - Verify Telnyx configuration
+   - Check phone number format
+   - Validate SIP credentials
+
+3. Database connection issues
+   - Check MongoDB status
+   - Verify connection string
+   - Check network connectivity
+
+4. Authentication issues
+   - Verify JWT secret
+   - Check token expiration
+   - Validate user permissions
+
+SUPPORT CONTACTS
+----------------
+- Development team
+- Database administrator
+- Network administrator
+- FusionPBX administrator
+- Telnyx support
+
+This plan provides a comprehensive roadmap for implementing the MongoDB-centric architecture
+while maintaining compatibility with your existing main website and leveraging FusionPBX
+as a stateless SIP gateway. Each week builds upon the previous week's progress, ensuring
+a systematic and professional implementation approach. 

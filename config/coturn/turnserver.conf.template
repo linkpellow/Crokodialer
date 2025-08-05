@@ -1,0 +1,51 @@
+# Coturn TURN Server configuration
+# Replace placeholders with actual values
+
+# Network settings
+listening-port=3478
+tls-listening-port=5349
+
+# Replace with your actual public IP
+listening-ip=YOUR_PUBLIC_SERVER_IP
+relay-ip=YOUR_PUBLIC_SERVER_IP
+
+# Port range for relay
+min-port=49152
+max-port=65535
+
+# Security settings
+fingerprint
+lt-cred-mech
+
+# Replace with your domain or server IP
+realm=yourdomain.com
+
+# Replace with secure credentials
+# Format: username:password
+user=turnuser:turnpassword
+
+# Quota settings
+total-quota=100
+bps-capacity=0
+stale-nonce
+
+# Network restrictions
+no-loopback-peers
+no-multicast-peers
+
+# Optional: Enable verbose logging for debugging
+# verbose
+
+# Optional: Log file location
+# log-file=/var/log/turnserver/turnserver.log
+
+# Optional: TLS certificate paths (if using TLS)
+# cert=/path/to/cert.pem
+# pkey=/path/to/privkey.pem
+
+# Optional: Database for persistent user storage
+# userdb=/var/lib/turn/turndb
+
+# Optional: Additional security
+# no-tlsv1
+# no-tlsv1_1 

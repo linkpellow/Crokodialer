@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Minimal Test</title>
+</head>
+<body>
+    <h1>Minimal Renderer Test</h1>
+    <div id="output"></div>
+    
+    <script>
+        console.log('🔍 [MINIMAL HTML] Page loaded');
+        
+        // Test basic functionality
+        try {
+            console.log('🔍 [MINIMAL HTML] Testing basic functionality...');
+            document.getElementById('output').innerHTML = 'Test started...';
+            console.log('✅ [MINIMAL HTML] Basic functionality works');
+        } catch (error) {
+            console.error('❌ [MINIMAL HTML] Basic functionality failed:', error);
+        }
+        
+        // Test require (if available)
+        try {
+            console.log('🔍 [MINIMAL HTML] Testing require...');
+            const config = require('./config.js');
+            console.log('✅ [MINIMAL HTML] Require works');
+        } catch (error) {
+            console.error('❌ [MINIMAL HTML] Require failed:', error);
+        }
+        
+        console.log('✅ [MINIMAL HTML] All tests completed');
+    </script>
+</body>
+</html> 

@@ -1,0 +1,44 @@
+{
+  "name": "crokodial-desktop",
+  "version": "1.0.0",
+  "description": "Crokodial Desktop Dialer",
+  "main": "main.js",
+  "scripts": {
+    "start": "NODE_ENV=production electron .",
+    "dev": "NODE_ENV=development electron .",
+    "build": "electron-builder",
+    "dist": "electron-builder --publish=never"
+  },
+  "keywords": [
+    "dialer",
+    "voip",
+    "electron"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "@telnyx/webrtc": "^2.22.16",
+    "axios": "^1.6.5",
+    "ws": "^8.14.2"
+  },
+  "build": {
+    "appId": "com.crokodial.dialer",
+    "productName": "Crokodial Dialer",
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.business"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
