@@ -476,15 +476,46 @@ function initAudioContext() {
   }
 }
 
-// Play beep sound for dial pad keys - NUCLEAR SAFE VERSION
+// Play beep sound for dial pad keys - FIXED VERSION
 async function playBeepSound(frequency = 800, duration = 100) {
   try {
-    // NUCLEAR: Completely disable audio to prevent crashes
-    console.log('🔧 [AUDIO] Audio disabled - skipping beep sound');
-    console.log('🔊 [AUDIO] Would play beep sound:', frequency, 'Hz for', duration, 'ms');
-    return;
+    // Check if audio context is available
+    if (!audioContext) {
+      console.log('⚠️ [AUDIO] Audio context not available - skipping beep');
+      return;
+    }
+    
+    // Resume audio context if suspended
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+    
+    console.log('🔊 [AUDIO] Playing beep sound:', frequency, 'Hz for', duration, 'ms');
+    
+    // Create oscillator for beep sound
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    // Configure oscillator
+    oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+    oscillator.type = 'sine';
+    
+    // Configure gain (volume)
+    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime); // Low volume
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+    
+    // Connect nodes
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    // Play sound
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + duration / 1000);
+    
+    console.log('✅ [AUDIO] Beep sound played successfully');
+    
   } catch (error) {
-    console.error('❌ [AUDIO] Failed to handle beep sound:', error);
+    console.error('❌ [AUDIO] Failed to play beep sound:', error);
   }
 }
 
@@ -1533,50 +1564,64 @@ async function startCall(phoneNumber, leadId = null) {
     
     console.log('Call data:', callData);
     
-    // Make call using native WebRTC
-            const webrtcResult = await makeRealTelnyxCall(cleanPhone);
-    
-    if (!webrtcResult.success) {
-      throw new Error(webrtcResult.error || 'Failed to initiate call');
-    }
-    
-    console.log('Native WebRTC call initiated:', webrtcResult.call);
-    
-    // Store the call reference
-    currentCallControlId = webrtcResult.call.id;
-    
-    // STABLE SIMULATION: Use enhanced simulation for now
-    console.log('📞 [SIMULATION] Making simulated call to:', phoneNumber);
-    console.log('⚠️ [SIMULATION] This is NOT a real call - enhanced simulation only');
-    console.log('📞 [SIMULATION] Real calls will be implemented in main process');
+    // Make call using Telnyx WebRTC SDK
+    console.log('📞 [REAL CALL] Attempting to make actual Telnyx call to:', cleanPhone);
     
     try {
-      // Use enhanced simulation
-      const simulationResult = await makeFallbackCall(phoneNumber);
-      console.log('✅ [SIMULATION] Enhanced simulation call initiated');
-      return simulationResult;
+      const webrtcResult = await makeRealTelnyxCall(cleanPhone);
       
-    } catch (error) {
-      console.error('❌ [SIMULATION] Failed to make simulation call:', error);
-      console.error('❌ [SIMULATION] Error details:', error);
-      throw error;
+      if (webrtcResult.success) {
+        console.log('✅ [REAL CALL] Successfully initiated real Telnyx call:', webrtcResult.call);
+        
+        // Store the call reference
+        currentCallControlId = webrtcResult.call.id || 'telnyx-call';
+        currentCall = webrtcResult.call;
+        
+        // Set call as active
+        isCallActive = true;
+        
+        // Transform button to "End Call" state
+        transformCallButtonToEndCall();
+        
+        console.log('✅ [REAL CALL] Real call initiated successfully');
+        
+        return { 
+          success: true, 
+          message: 'Real call initiated via Telnyx WebRTC',
+          callControlId: currentCallControlId,
+          isRealCall: true
+        };
+      } else {
+        console.warn('⚠️ [REAL CALL] Real call failed, falling back to simulation:', webrtcResult.error);
+        throw new Error(webrtcResult.error || 'Real call failed');
+      }
+    } catch (realCallError) {
+      console.warn('⚠️ [REAL CALL] Real call failed, using fallback simulation:', realCallError.message);
+      console.log('📞 [FALLBACK] Making simulated call to:', phoneNumber);
+      
+      try {
+        // Use enhanced simulation as fallback
+        const simulationResult = await makeFallbackCall(phoneNumber);
+        console.log('✅ [FALLBACK] Enhanced simulation call initiated');
+        
+        // Set call as active
+        isCallActive = true;
+        
+        // Transform button to "End Call" state
+        transformCallButtonToEndCall();
+        
+        return {
+          ...simulationResult,
+          message: 'Simulated call initiated (real call not available)',
+          isRealCall: false,
+          fallbackReason: realCallError.message
+        };
+        
+      } catch (error) {
+        console.error('❌ [FALLBACK] Failed to make simulation call:', error);
+        throw error;
+      }
     }
-    
-    // ✅ FIX: WebSocket already connected at startup - no need to connect here
-    
-    // Set call as active
-    isCallActive = true;
-    
-    // Transform button to "End Call" state
-    transformCallButtonToEndCall();
-    
-    console.log('Native WebRTC call initiated successfully');
-    
-    return { 
-      success: true, 
-      message: 'Call initiated via native WebRTC',
-      callControlId: response.callControlId 
-    };
   } catch (error) {
     console.error('Error in startCall:', error);
     callStatus.textContent = 'Error initiating call';
@@ -2812,6 +2857,9 @@ phoneDisplay.addEventListener('focus', () => {
   
   // Initialize audio controls
   initializeAudioControls();
+  
+  // Initialize permission diagnostics
+  setupPermissionDiagnostics();
 
 // Drag functionality
 function initializeDragFunctionality() {
@@ -3284,18 +3332,201 @@ async function reconnectWebRTC() {
   }
 }
 
-// Telnyx WebRTC Call Handling Functions
+// ✅ FIX: Enhanced incoming call handler with full UI support
 function handleIncomingCall(call) {
-  console.log('📞 [TELNYX] Incoming call from:', call.from);
+  console.log('📞 [INBOUND CALL] Incoming call from:', call.from);
+  console.log('📞 [INBOUND CALL] Call details:', call);
   
   // Store the call reference
+  currentCall = call;
   telnyxCall = call;
+  
+  // Play incoming call sound
+  audioManager.playSound('call.inbound');
   
   // Update UI to show incoming call
   setCallState(CALL_STATES.RINGING, `Incoming from ${call.from}`);
   
-  // Play ringtone or show incoming call UI
-  playCallBeep();
+  // Update phone display with caller's number
+  const phoneDisplay = document.getElementById('phoneDisplay');
+  if (phoneDisplay) {
+    phoneDisplay.value = call.from || 'Unknown Number';
+  }
+  
+  // Update lead name display
+  const leadNameDisplay = document.getElementById('leadNameDisplay');
+  if (leadNameDisplay) {
+    leadNameDisplay.textContent = `Incoming Call`;
+  }
+  
+  // Transform call button to "Answer" state
+  const callBtn = document.getElementById('callBtn');
+  if (callBtn) {
+    callBtn.innerHTML = `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+      </svg>
+    `;
+    callBtn.style.background = '#34C759'; // Green for answer
+    callBtn.title = 'Answer Call';
+    
+    // Replace the call button click handler temporarily
+    const originalHandler = callBtn.onclick;
+    callBtn.onclick = async () => {
+      console.log('📞 [INBOUND CALL] Answering incoming call');
+      
+      try {
+        // Answer the call
+        await call.answer();
+        console.log('✅ [INBOUND CALL] Call answered successfully');
+        
+        // Transition to active state
+        setCallState(CALL_STATES.ACTIVE, `Connected to ${call.from}`);
+        
+        // Transform button to "End Call" state
+        transformCallButtonToEndCall();
+        
+        // Set up remote audio handling for the answered call
+        connectRemoteAudioStream(call);
+        
+      } catch (error) {
+        console.error('❌ [INBOUND CALL] Failed to answer call:', error);
+        setCallState(CALL_STATES.DISCONNECTED, 'Failed to answer');
+        
+        // Restore original button
+        callBtn.onclick = originalHandler;
+        transformCallButtonToCall();
+      }
+    };
+  }
+  
+  // Show reject button (using hangup button)
+  const hangupBtn = document.getElementById('hangupBtn');
+  const hangupContainer = document.querySelector('.hangup-button-container');
+  if (hangupBtn && hangupContainer) {
+    hangupContainer.style.display = 'flex';
+    hangupBtn.style.display = 'flex';
+    hangupBtn.title = 'Reject Call';
+    
+    // Replace hangup handler temporarily
+    const originalHangupHandler = hangupBtn.onclick;
+    hangupBtn.onclick = async () => {
+      console.log('📞 [INBOUND CALL] Rejecting incoming call');
+      
+      try {
+        // Reject the call
+        await call.hangup();
+        console.log('✅ [INBOUND CALL] Call rejected successfully');
+        
+        // Reset UI
+        setCallState(CALL_STATES.IDLE, 'Call rejected');
+        transformCallButtonToCall();
+        hangupContainer.style.display = 'none';
+        
+        // Clear display
+        phoneDisplay.value = '';
+        leadNameDisplay.textContent = '';
+        
+        // Restore original handlers
+        callBtn.onclick = originalHandler;
+        hangupBtn.onclick = originalHangupHandler;
+        
+      } catch (error) {
+        console.error('❌ [INBOUND CALL] Failed to reject call:', error);
+      }
+    };
+  }
+  
+  // Set up call event listeners for inbound call
+  setupInboundCallEventListeners(call);
+}
+
+// ✅ FIX: Set up event listeners for inbound calls
+function setupInboundCallEventListeners(call) {
+  console.log('📞 [INBOUND CALL] Setting up event listeners for inbound call');
+  
+  // State change events
+  call.on('state', (state) => {
+    console.log('📞 [INBOUND CALL] State changed to:', state);
+    handleInboundCallStateChange(call, state);
+  });
+  
+  call.on('stateChange', (state) => {
+    console.log('📞 [INBOUND CALL] StateChange event:', state);
+    handleInboundCallStateChange(call, state);
+  });
+  
+  // Remote stream handling for inbound calls
+  call.on('remoteStream', (stream) => {
+    console.log('🔊 [INBOUND CALL] Remote stream received:', stream);
+    connectRemoteAudioStream(call);
+  });
+  
+  // Call ended event
+  call.on('ended', () => {
+    console.log('📞 [INBOUND CALL] Call ended');
+    handleInboundCallEnded();
+  });
+  
+  call.on('failed', (error) => {
+    console.log('❌ [INBOUND CALL] Call failed:', error);
+    handleInboundCallEnded();
+  });
+}
+
+// ✅ FIX: Handle inbound call state changes
+function handleInboundCallStateChange(call, state) {
+  console.log('📞 [INBOUND CALL] Handling state change:', state);
+  
+  switch (state) {
+    case 'ringing':
+      setCallState(CALL_STATES.RINGING, `Incoming from ${call.from}`);
+      break;
+    case 'answered':
+    case 'active':
+      setCallState(CALL_STATES.ACTIVE, `Connected to ${call.from}`);
+      connectRemoteAudioStream(call);
+      break;
+    case 'ended':
+    case 'hangup':
+      handleInboundCallEnded();
+      break;
+    case 'failed':
+      console.error('❌ [INBOUND CALL] Call failed in state:', state);
+      handleInboundCallEnded();
+      break;
+  }
+}
+
+// ✅ FIX: Handle inbound call ending
+function handleInboundCallEnded() {
+  console.log('📞 [INBOUND CALL] Handling call end');
+  
+  // Reset UI state
+  setCallState(CALL_STATES.IDLE, 'Call ended');
+  transformCallButtonToCall();
+  
+  // Hide reject button
+  const hangupContainer = document.querySelector('.hangup-button-container');
+  if (hangupContainer) {
+    hangupContainer.style.display = 'none';
+  }
+  
+  // Clear displays
+  const phoneDisplay = document.getElementById('phoneDisplay');
+  const leadNameDisplay = document.getElementById('leadNameDisplay');
+  if (phoneDisplay) phoneDisplay.value = '';
+  if (leadNameDisplay) leadNameDisplay.textContent = '';
+  
+  // Clear call references
+  currentCall = null;
+  telnyxCall = null;
+  
+  // Clear remote audio
+  clearRemoteAudioStream();
+  
+  // Play hangup sound
+  audioManager.playSound('call.hangup');
 }
 
 function handleCallStateChange(call) {
@@ -3437,16 +3668,17 @@ async function makeRealTelnyxCall(phoneNumber) {
       throw new Error('TelnyxRTC not available - NO REAL CALLS');
     }
     
-    // Request microphone permission first
+    // ✅ FIX: Enhanced microphone permission handling
     console.log('🎤 [REAL CALL] Requesting microphone permission...');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log('✅ [REAL CALL] Microphone permission granted');
-      // Stop the test stream - Telnyx will create its own
-      stream.getTracks().forEach(track => track.stop());
+      const stream = await ensureMicrophonePermission();
+      console.log('✅ [REAL CALL] Microphone permission granted with enhanced settings');
+      
+      // The stream is now stored in localStream and will be used by Telnyx
+      
     } catch (micError) {
-      console.error('❌ [REAL CALL] Microphone permission denied:', micError);
-      throw new Error('Microphone access required for calls');
+      console.error('❌ [REAL CALL] Microphone permission denied or failed:', micError);
+      throw new Error(`Microphone access required for calls: ${micError.message}`);
     }
     
     // Get JWT token from backend
@@ -3456,19 +3688,48 @@ async function makeRealTelnyxCall(phoneNumber) {
     
     console.log('✅ [REAL CALL] Got JWT token:', telnyxJwt ? '***' + telnyxJwt.slice(-10) : 'undefined');
     
-    // Create Telnyx client with JWT authentication
+    // Create Telnyx client with JWT authentication and enhanced ICE configuration
     const telnyxClient = new window.TelnyxRTC({
       login_token: telnyxJwt, // Use JWT instead of username/password
       ringtoneFile: null, // Disable default ringtone
+      // Enhanced ICE server configuration for better connectivity
       iceServers: [
+        // Public STUN servers for NAT traversal
         { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun.telnyx.com:3478' },
+        // Telnyx TURN servers (these credentials should be obtained from Telnyx portal)
         {
-          urls: 'turn:turn.telnyx.com:3478?transport=tcp',
-          username: 'turn',
-          credential: 'turnpassword'
+          urls: ['turn:turn.telnyx.com:3478', 'turn:turn.telnyx.com:3478?transport=tcp'],
+          username: 'telnyx',
+          credential: 'telnyx'
+        },
+        // Fallback TURN servers
+        {
+          urls: ['turn:relay.webrtc.org:3478', 'turn:relay.webrtc.org:3478?transport=tcp'],
+          username: 'webrtc',
+          credential: 'webrtc'
         }
-      ]
+      ],
+      // Additional WebRTC configuration for better call quality
+      rtcConfiguration: {
+        iceCandidatePoolSize: 10,
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
+        iceTransportPolicy: 'all' // Allow both STUN and TURN
+      },
+      // Audio configuration
+      audioConstraints: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        googEchoCancellation: true,
+        googAutoGainControl: true,
+        googNoiseSuppression: true,
+        googHighpassFilter: true,
+        googTypingNoiseDetection: true
+      }
     });
     
     console.log('✅ [REAL CALL] Telnyx client created');
@@ -3476,6 +3737,42 @@ async function makeRealTelnyxCall(phoneNumber) {
     // Connect to Telnyx
     await telnyxClient.connect();
     console.log('✅ [REAL CALL] Connected to Telnyx - READY FOR REAL CALLS');
+    
+    // ✅ FIX: Set up inbound call handling
+    telnyxClient.on('telnyx.ready', () => {
+      console.log('🎉 [REAL CALL] Telnyx client ready for inbound and outbound calls');
+    });
+    
+    telnyxClient.on('telnyx.socket.open', () => {
+      console.log('🔌 [REAL CALL] Telnyx WebSocket connection established');
+    });
+    
+    telnyxClient.on('telnyx.socket.error', (error) => {
+      console.error('❌ [REAL CALL] Telnyx WebSocket error:', error);
+    });
+    
+    telnyxClient.on('telnyx.socket.close', () => {
+      console.warn('⚠️ [REAL CALL] Telnyx WebSocket connection closed');
+    });
+    
+    // ✅ FIX: Handle incoming calls
+    telnyxClient.on('telnyx.notification', (notification) => {
+      console.log('🔔 [REAL CALL] Telnyx notification received:', notification);
+      
+      if (notification.type === 'callUpdate' && notification.call) {
+        const incomingCall = notification.call;
+        if (incomingCall.state === 'ringing' && incomingCall.direction === 'inbound') {
+          console.log('📞 [INBOUND CALL] Incoming call detected:', incomingCall);
+          handleIncomingCall(incomingCall);
+        }
+      }
+    });
+    
+    // ✅ FIX: Alternative event for incoming calls
+    telnyxClient.on('call.received', (call) => {
+      console.log('📞 [INBOUND CALL] Call received event:', call);
+      handleIncomingCall(call);
+    });
     
     // Create the ACTUAL call
     const call = telnyxClient.newCall({
@@ -3580,16 +3877,101 @@ async function makeRealTelnyxCall(phoneNumber) {
       }
     }
     
-    // Handle REAL remote stream
+    // Handle REAL remote stream - ENHANCED VERSION
     call.on('remoteStream', (stream) => {
       console.log('🔊 [REAL CALL] REAL remote stream received:', stream);
+      console.log('🔊 [REAL CALL] Stream tracks:', stream.getTracks().length);
+      console.log('🔊 [REAL CALL] Audio tracks:', stream.getAudioTracks().length);
       console.log('🎉 [REAL CALL] YOU SHOULD HEAR THE ACTUAL PERSON TALKING!');
       
       const remoteAudio = document.getElementById('remoteAudio');
       if (remoteAudio) {
+        // Configure audio element for better compatibility
+        remoteAudio.autoplay = true;
+        remoteAudio.controls = false;
+        remoteAudio.muted = false;
+        remoteAudio.volume = 1.0;
+        
+        // Set the stream
         remoteAudio.srcObject = stream;
-        remoteAudio.play().then(() => {
-          console.log('✅ [REAL CALL] REAL audio started playing');
+        
+        // Handle autoplay policy issues
+        const playAudio = async () => {
+          try {
+            // Resume audio context if suspended
+            if (audioContext && audioContext.state === 'suspended') {
+              await audioContext.resume();
+              console.log('✅ [REAL CALL] Audio context resumed');
+            }
+            
+            await remoteAudio.play();
+            console.log('✅ [REAL CALL] REAL audio started playing successfully');
+            
+            // Verify audio is actually playing
+            setTimeout(() => {
+              if (!remoteAudio.paused) {
+                console.log('✅ [REAL CALL] Audio is actively playing');
+              } else {
+                console.warn('⚠️ [REAL CALL] Audio element is paused - attempting to resume');
+                remoteAudio.play().catch(e => console.error('Failed to resume audio:', e));
+              }
+            }, 1000);
+            
+          } catch (error) {
+            console.error('❌ [REAL CALL] Failed to play remote audio:', error);
+            
+            // Try alternative approaches for autoplay policy issues
+            if (error.name === 'NotAllowedError') {
+              console.log('⚠️ [REAL CALL] Autoplay blocked - user interaction required');
+              
+              // Show a visual indicator that user needs to click to enable audio
+              const callStatus = document.getElementById('callStatus');
+              if (callStatus) {
+                callStatus.textContent = 'Connected - Click to enable audio';
+                callStatus.style.cursor = 'pointer';
+                callStatus.onclick = () => {
+                  remoteAudio.play().then(() => {
+                    console.log('✅ [REAL CALL] Audio enabled after user interaction');
+                    callStatus.textContent = 'Connected';
+                    callStatus.style.cursor = 'default';
+                    callStatus.onclick = null;
+                  });
+                };
+              }
+            }
+          }
+        };
+        
+        // Start audio playback
+        playAudio();
+        
+        // Monitor audio stream health
+        const monitorAudio = () => {
+          const audioTracks = stream.getAudioTracks();
+          audioTracks.forEach((track, index) => {
+            console.log(`🔊 [REAL CALL] Audio track ${index}:`, {
+              enabled: track.enabled,
+              readyState: track.readyState,
+              muted: track.muted
+            });
+          });
+          
+          if (audioTracks.length === 0) {
+            console.warn('⚠️ [REAL CALL] No audio tracks in remote stream');
+          }
+        };
+        
+        // Monitor every 5 seconds
+        const audioMonitorInterval = setInterval(monitorAudio, 5000);
+        
+        // Clean up on stream end
+        stream.addEventListener('removetrack', () => {
+          console.log('🔊 [REAL CALL] Audio track removed from stream');
+          clearInterval(audioMonitorInterval);
+        });
+        
+        // Initial monitor
+        monitorAudio();
           
           // Monitor audio stats
           if (call.peerConnection) {
@@ -3621,6 +4003,8 @@ async function makeRealTelnyxCall(phoneNumber) {
     
     // Monitor peer connection signaling state for answer detection
     if (call.peerConnection) {
+      setupCallDiagnostics(call.peerConnection);
+      
       call.peerConnection.onsignalingstatechange = () => {
         const signalingState = call.peerConnection.signalingState;
         console.log('📡 [REAL CALL] Signaling state:', signalingState);
@@ -3636,18 +4020,68 @@ async function makeRealTelnyxCall(phoneNumber) {
         }
       };
       
-      // Also monitor ICE connection state
+      // Enhanced ICE connection state monitoring
       call.peerConnection.oniceconnectionstatechange = () => {
         const iceState = call.peerConnection.iceConnectionState;
         console.log('🧊 [REAL CALL] ICE connection state:', iceState);
         
-        if (iceState === 'connected' || iceState === 'completed') {
-          console.log('✅ [REAL CALL] ICE connected - media should flow');
-          // Ensure we're in active state
-          if (currentCallState === CALL_STATES.RINGING) {
+        switch (iceState) {
+          case 'checking':
+            console.log('🧊 [ICE] Checking connectivity...');
+            break;
+          case 'connected':
+            console.log('✅ [ICE] Connected - media should flow');
+            if (currentCallState === CALL_STATES.RINGING) {
+              setCallState(CALL_STATES.ACTIVE, `Connected to ${phoneNumber}`);
+              audioManager.playSound('call.answered');
+            }
+            break;
+          case 'completed':
+            console.log('✅ [ICE] Connection completed');
+            break;
+          case 'failed':
+            console.error('❌ [ICE] Connection failed');
+            setCallState(CALL_STATES.DISCONNECTED, 'Connection failed');
+            break;
+          case 'disconnected':
+            console.warn('⚠️ [ICE] Connection disconnected');
+            if (currentCallState === CALL_STATES.ACTIVE) {
+              setCallState(CALL_STATES.DISCONNECTED, 'Connection lost');
+            }
+            break;
+          case 'closed':
+            console.log('🔚 [ICE] Connection closed');
+            setCallState(CALL_STATES.DISCONNECTED, 'Call ended');
+            break;
+        }
+      };
+      
+      // Monitor connection state
+      call.peerConnection.onconnectionstatechange = () => {
+        const connectionState = call.peerConnection.connectionState;
+        console.log('🔗 [REAL CALL] Connection state:', connectionState);
+        
+        switch (connectionState) {
+          case 'connecting':
+            console.log('🔗 [CONNECTION] Establishing connection...');
+            setCallState(CALL_STATES.DIALING, `Connecting to ${phoneNumber}`);
+            break;
+          case 'connected':
+            console.log('✅ [CONNECTION] Connected successfully');
             setCallState(CALL_STATES.ACTIVE, `Connected to ${phoneNumber}`);
-            audioManager.playSound('call.answered');
-          }
+            break;
+          case 'disconnected':
+            console.warn('⚠️ [CONNECTION] Disconnected');
+            setCallState(CALL_STATES.DISCONNECTED, 'Disconnected');
+            break;
+          case 'failed':
+            console.error('❌ [CONNECTION] Failed');
+            setCallState(CALL_STATES.DISCONNECTED, 'Connection failed');
+            break;
+          case 'closed':
+            console.log('🔚 [CONNECTION] Closed');
+            setCallState(CALL_STATES.DISCONNECTED, 'Call ended');
+            break;
         }
       };
     }
@@ -3719,10 +4153,18 @@ function simulateRealisticRemoteAudio(phoneNumber) {
   try {
     console.log('🔊 [FALLBACK] Simulating realistic remote audio for:', phoneNumber);
     
-    // NUCLEAR: Completely disable audio simulation to prevent crashes
-    console.log('🔧 [FALLBACK] Audio simulation disabled - no audio will play');
-    console.log('🔊 [FALLBACK] Would simulate audio for:', phoneNumber);
-    return;
+    // Check if audio context is available
+    if (!audioContext) {
+      console.log('⚠️ [FALLBACK] Audio context not available - skipping audio simulation');
+      return;
+    }
+    
+    // Resume audio context if suspended
+    if (audioContext.state === 'suspended') {
+      audioContext.resume().then(() => {
+        console.log('✅ [FALLBACK] Audio context resumed for simulation');
+      });
+    }
     
     // Create multiple oscillators for more realistic voice simulation
     const oscillators = [];
@@ -3730,7 +4172,7 @@ function simulateRealisticRemoteAudio(phoneNumber) {
     
     // Human voice frequencies (fundamental + harmonics)
     const frequencies = [150, 300, 450, 600, 750, 900]; // Male voice range
-    const volumes = [0.3, 0.2, 0.15, 0.1, 0.05, 0.03]; // Decreasing harmonics
+    const volumes = [0.02, 0.015, 0.01, 0.008, 0.005, 0.003]; // Very low volumes
     
     frequencies.forEach((freq, index) => {
       const oscillator = audioContext.createOscillator();
@@ -3738,7 +4180,7 @@ function simulateRealisticRemoteAudio(phoneNumber) {
       
       oscillator.frequency.setValueAtTime(freq, audioContext.currentTime);
       oscillator.type = 'sine';
-      gainNode.gain.setValueAtTime(volumes[index] * 0.1, audioContext.currentTime); // Very low volume
+      gainNode.gain.setValueAtTime(volumes[index], audioContext.currentTime); // Very low volume
       
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
@@ -3855,6 +4297,109 @@ function startWebRTCMonitoring() {
   console.log('✅ [WEBRTC] Connection monitoring started (check every 5 minutes)');
 } 
 
+// ✅ FIX: Comprehensive call diagnostics setup
+function setupCallDiagnostics(peerConnection) {
+  if (!peerConnection) return;
+  
+  console.log('🔍 [DIAGNOSTICS] Setting up comprehensive call diagnostics...');
+  
+  // ICE candidate monitoring
+  setupICEDiagnostics(peerConnection);
+  
+  // Audio track monitoring  
+  setupAudioTrackDiagnostics(peerConnection);
+  
+  // Codec monitoring
+  setupCodecDiagnostics(peerConnection);
+  
+  // Stats monitoring every 5 seconds
+  const statsInterval = setInterval(async () => {
+    try {
+      const stats = await peerConnection.getStats();
+      logCallStats(stats);
+    } catch (error) {
+      console.error('❌ [DIAGNOSTICS] Failed to get call stats:', error);
+    }
+  }, 5000);
+  
+  // Clean up interval when call ends
+  peerConnection.addEventListener('connectionstatechange', () => {
+    if (peerConnection.connectionState === 'closed') {
+      clearInterval(statsInterval);
+      console.log('🔍 [DIAGNOSTICS] Call diagnostics monitoring stopped');
+    }
+  });
+  
+  console.log('✅ [DIAGNOSTICS] Call diagnostics setup complete');
+}
+
+// ✅ FIX: Enhanced call statistics logging
+function logCallStats(stats) {
+  const audioStats = {
+    inbound: { bytesReceived: 0, packetsReceived: 0, packetsLost: 0, jitter: 0 },
+    outbound: { bytesSent: 0, packetsSent: 0 },
+    candidate: { local: [], remote: [] }
+  };
+  
+  stats.forEach((report) => {
+    switch (report.type) {
+      case 'inbound-rtp':
+        if (report.mediaType === 'audio') {
+          audioStats.inbound = {
+            bytesReceived: report.bytesReceived || 0,
+            packetsReceived: report.packetsReceived || 0,
+            packetsLost: report.packetsLost || 0,
+            jitter: report.jitter || 0
+          };
+        }
+        break;
+      case 'outbound-rtp':
+        if (report.mediaType === 'audio') {
+          audioStats.outbound = {
+            bytesSent: report.bytesSent || 0,
+            packetsSent: report.packetsSent || 0
+          };
+        }
+        break;
+      case 'local-candidate':
+        audioStats.candidate.local.push({
+          candidateType: report.candidateType,
+          ip: report.ip,
+          port: report.port,
+          protocol: report.protocol
+        });
+        break;
+      case 'remote-candidate':
+        audioStats.candidate.remote.push({
+          candidateType: report.candidateType,
+          ip: report.ip,
+          port: report.port,
+          protocol: report.protocol
+        });
+        break;
+    }
+  });
+  
+  // Log every 30 seconds to avoid spam
+  if (Date.now() % 30000 < 5000) {
+    console.log('📊 [CALL STATS] Audio Quality Report:', audioStats);
+    
+    // Calculate audio quality score
+    const packetLossRate = audioStats.inbound.packetsLost / 
+                          (audioStats.inbound.packetsReceived + audioStats.inbound.packetsLost);
+    
+    let quality = 'excellent';
+    if (packetLossRate > 0.05) quality = 'poor';
+    else if (packetLossRate > 0.02) quality = 'fair';
+    else if (packetLossRate > 0.01) quality = 'good';
+    
+    console.log(`📊 [CALL QUALITY] ${quality.toUpperCase()} - Packet Loss: ${(packetLossRate * 100).toFixed(2)}%`);
+    
+    // Update UI quality indicator
+    updateCallQuality(quality);
+  }
+}
+
 // ✅ FIX: ICE Candidate Diagnostics
 function setupICEDiagnostics(pc) {
   if (!pc) return;
@@ -3949,13 +4494,33 @@ function setupCodecDiagnostics(pc) {
   };
 }
 
-// ✅ FIX: Permission Diagnostics
+// ✅ FIX: Permission Diagnostics and HTTPS Context Validation
 function setupPermissionDiagnostics() {
-  console.log('🔍 [PERMISSION DIAGNOSTICS] Checking microphone permissions...');
+  console.log('🔍 [PERMISSION DIAGNOSTICS] Checking microphone permissions and HTTPS context...');
   
-  navigator.permissions.query({ name: 'microphone' }).then((result) => {
-    console.log('🔍 [PERMISSION DIAGNOSTICS] Microphone permission state:', result.state);
-  });
+  // Check HTTPS context
+  const isSecureContext = window.isSecureContext || window.location.protocol === 'https:' || 
+                         window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  
+  console.log('🔒 [PERMISSION DIAGNOSTICS] Secure context (HTTPS/localhost):', isSecureContext);
+  
+  if (!isSecureContext) {
+    console.warn('⚠️ [PERMISSION DIAGNOSTICS] Not in secure context - WebRTC may be limited');
+  }
+  
+  // Check microphone permission state
+  if (navigator.permissions) {
+    navigator.permissions.query({ name: 'microphone' }).then((result) => {
+      console.log('🔍 [PERMISSION DIAGNOSTICS] Microphone permission state:', result.state);
+      
+      // Listen for permission changes
+      result.addEventListener('change', () => {
+        console.log('🔍 [PERMISSION DIAGNOSTICS] Microphone permission changed to:', result.state);
+      });
+    }).catch(error => {
+      console.warn('⚠️ [PERMISSION DIAGNOSTICS] Could not query microphone permission:', error);
+    });
+  }
   
   // Test microphone access
   navigator.mediaDevices.getUserMedia({ audio: true })
@@ -3963,8 +4528,16 @@ function setupPermissionDiagnostics() {
       console.log('✅ [PERMISSION DIAGNOSTICS] Microphone access successful');
       console.log('🔍 [PERMISSION DIAGNOSTICS] Audio tracks:', stream.getAudioTracks().length);
       
-      stream.getAudioTracks().forEach(track => {
-        console.log('🔍 [PERMISSION DIAGNOSTICS] Track settings:', track.getSettings());
+      stream.getAudioTracks().forEach((track, index) => {
+        const settings = track.getSettings();
+        console.log(`🔍 [PERMISSION DIAGNOSTICS] Track ${index} settings:`, {
+          deviceId: settings.deviceId,
+          echoCancellation: settings.echoCancellation,
+          noiseSuppression: settings.noiseSuppression,
+          autoGainControl: settings.autoGainControl,
+          sampleRate: settings.sampleRate,
+          channelCount: settings.channelCount
+        });
       });
       
       // Stop the test stream
@@ -3972,5 +4545,68 @@ function setupPermissionDiagnostics() {
     })
     .catch(error => {
       console.error('❌ [PERMISSION DIAGNOSTICS] Microphone access failed:', error);
+      
+      // Provide specific error guidance
+      switch (error.name) {
+        case 'NotAllowedError':
+          console.error('❌ [PERMISSION DIAGNOSTICS] User denied microphone permission');
+          break;
+        case 'NotFoundError':
+          console.error('❌ [PERMISSION DIAGNOSTICS] No microphone found');
+          break;
+        case 'NotReadableError':
+          console.error('❌ [PERMISSION DIAGNOSTICS] Microphone is already in use');
+          break;
+        case 'OverconstrainedError':
+          console.error('❌ [PERMISSION DIAGNOSTICS] Microphone constraints cannot be satisfied');
+          break;
+        case 'SecurityError':
+          console.error('❌ [PERMISSION DIAGNOSTICS] Security error - check HTTPS/localhost');
+          break;
+        default:
+          console.error('❌ [PERMISSION DIAGNOSTICS] Unknown microphone error:', error.name);
+      }
     });
+}
+
+// ✅ FIX: Enhanced microphone permission handling
+async function ensureMicrophonePermission() {
+  console.log('🎤 [MIC PERMISSION] Ensuring microphone permission...');
+  
+  try {
+    // First check if we already have permission
+    if (navigator.permissions) {
+      const permission = await navigator.permissions.query({ name: 'microphone' });
+      console.log('🎤 [MIC PERMISSION] Current permission state:', permission.state);
+      
+      if (permission.state === 'denied') {
+        throw new Error('Microphone permission has been denied. Please enable it in browser settings.');
+      }
+    }
+    
+    // Request microphone access
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        sampleRate: 48000,
+        channelCount: 1
+      } 
+    });
+    
+    console.log('✅ [MIC PERMISSION] Microphone permission granted');
+    
+    // Store the stream for later use
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+    }
+    localStream = stream;
+    
+    return stream;
+    
+  } catch (error) {
+    console.error('❌ [MIC PERMISSION] Failed to get microphone permission:', error);
+    throw error;
+  }
 }
